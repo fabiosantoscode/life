@@ -1,0 +1,8 @@
+[package]
+name = "life"
+version = "0.1.0"
+authors = ["Fábio Santos <fabiosantosart@gmail.com>"]
+
+[dependencies]
+piston_window = "0.44.0"
+
