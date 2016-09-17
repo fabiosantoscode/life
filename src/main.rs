@@ -39,25 +39,24 @@ fn is_cell_live(map: &mut Vec<bool>, x: usize, y: usize) -> bool {
 }
 
 // [ neighbour_x + 64, neighbour_y + 48 ]
-const possible_neighbours_pairs: [[usize; 2]; 8] = [[63, 47], [63, 48], [63, 49], [64, 47],
+const POSSIBLE_NEIGHBOURS_PAIRS: [[usize; 2]; 8] = [[63, 47], [63, 48], [63, 49], [64, 47],
                                                     [64, 49], [65, 47], [65, 48], [65, 49]];
 
 fn does_cell_live(map: &mut Vec<bool>, x: usize, y: usize) -> bool {
     let mut live_neighbour_count = 0;
-    let mut live_neighbour_count_2 = 0;
-    for n in possible_neighbours_pairs.iter() {
+    for n in POSSIBLE_NEIGHBOURS_PAIRS.iter() {
         let (x_diff, y_diff) = (n[0], n[1]);
         if is_cell_live(map, (x + x_diff) % 64, (y + y_diff) % 48) {
-            live_neighbour_count_2 += 1;
+            live_neighbour_count += 1;
         }
     }
     if is_cell_live(map, x, y) {
-        if live_neighbour_count_2 < 2 || live_neighbour_count_2 > 3 {
+        if live_neighbour_count < 2 || live_neighbour_count > 3 {
             return false;  // overpopulation
         }
         return true;
     } else {
-        if live_neighbour_count_2 == 3 {
+        if live_neighbour_count == 3 {
             return true; // reproduction
         }
         return false;
