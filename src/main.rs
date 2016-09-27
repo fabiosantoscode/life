@@ -91,12 +91,13 @@ fn update_life(map: &mut Vec<bool>) {
     }
 }
 
-const GRAY: f32 = 0.80;
+const COLOR_LINE: [f32; 4] = [0.8, 0.8, 0.8, 1.0];
+const COLOR_ON: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
 
 fn draw_life(map: &mut Vec<bool>, state: AppState, c: Context, g: &mut G2d) {
     for x in 0..64 {
         let screen_x = x as f64;
-        line([GRAY, GRAY, GRAY, 1.0],
+        line(COLOR_LINE,
              0.5,
              [screen_x * 10.0, 0.0, screen_x * 10.0, 480.0],
              c.transform,
@@ -104,7 +105,7 @@ fn draw_life(map: &mut Vec<bool>, state: AppState, c: Context, g: &mut G2d) {
     }
     for y in 0..48 {
         let screen_y = y as f64;
-        line([GRAY, GRAY, GRAY, 1.0],
+        line(COLOR_LINE,
              0.5,
              [0.0, screen_y * 10.0, 640.0, screen_y * 10.0],
              c.transform,
@@ -116,7 +117,7 @@ fn draw_life(map: &mut Vec<bool>, state: AppState, c: Context, g: &mut G2d) {
             let screen_y = y as f64;
             let on = map[(y * 64) + x];
             if on {
-                rectangle([1.0, 0.0, 0.0, 1.0],
+                rectangle(COLOR_ON,
                           [screen_x * 10.0, screen_y * 10.0, 9.0, 9.0],
                           c.transform,
                           g);
