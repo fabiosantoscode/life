@@ -4,5 +4,5 @@ version = "0.1.0"
 authors = ["Fábio Santos <fabiosantosart@gmail.com>"]
 
 [dependencies]
-piston_window = "0.44.0"
+piston_window = "0.117.0"
 
