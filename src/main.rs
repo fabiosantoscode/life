@@ -31,6 +31,7 @@ fn create_map() -> Vec<bool> {
     ret[1 + (64 * 10)] = true;
     ret[2 + (64 * 10)] = true;
 
+    // xxx
     ret[180] = true;
     ret[181] = true;
     ret[182] = true;
@@ -38,7 +39,7 @@ fn create_map() -> Vec<bool> {
     return ret;
 }
 
-fn is_cell_live(map: &mut Vec<bool>, x: usize, y: usize) -> bool {
+fn is_cell_alive(map: &Vec<bool>, x: usize, y: usize) -> bool {
     return map[(y * 64) + x];
 }
 
@@ -58,27 +59,22 @@ const POSSIBLE_NEIGHBOURS_PAIRS: [[usize; 2]; 8] = [
     [64 + 1, 48 + 1],
 ];
 
-fn does_cell_live(map: &mut Vec<bool>, x: usize, y: usize) -> bool {
+fn does_cell_live(map: &Vec<bool>, x: usize, y: usize) -> bool {
     let mut live_neighbour_count = 0;
-    for n in POSSIBLE_NEIGHBOURS_PAIRS.iter() {
-        let (x_diff, y_diff) = (n[0], n[1]);
-        if is_cell_live(map, (x + x_diff) % 64, (y + y_diff) % 48) {
-            live_neighbour_count += 1;
-        }
+    for [x_diff, y_diff] in POSSIBLE_NEIGHBOURS_PAIRS.iter() {
+        let is_alive = is_cell_alive(map, (x + x_diff) % 64, (y + y_diff) % 48);
+
+        live_neighbour_count += is_alive as u8
     }
-    if is_cell_live(map, x, y) {
-        if live_neighbour_count < 2 {
-            return false; // starvation
+
+    if is_cell_alive(map, x, y) {
+        match live_neighbour_count {
+            0 | 1 => false,      // Starvation
+            n if n > 3 => false, // Overpopulation
+            _ => true,
         }
-        if live_neighbour_count > 3 {
-            return false; // overpopulation
-        }
-        return true;
     } else {
-        if live_neighbour_count == 3 {
-            return true; // reproduction
-        }
-        return false;
+        live_neighbour_count == 3 // Reproduction
     }
 }
 
@@ -95,7 +91,7 @@ fn update_life(map: &mut Vec<bool>) {
 const COLOR_LINE: [f32; 4] = [0.8, 0.8, 0.8, 1.0];
 const COLOR_ON: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
 
-fn draw_life(map: &mut Vec<bool>, state: AppState, c: Context, g: &mut G2d) {
+fn draw_life(map: &Vec<bool>, state: AppState, c: Context, g: &mut G2d) {
     for x in 0..64 {
         let screen_x = x as f64;
         line(
@@ -120,8 +116,7 @@ fn draw_life(map: &mut Vec<bool>, state: AppState, c: Context, g: &mut G2d) {
         for y in 0..48 {
             let screen_x = x as f64;
             let screen_y = y as f64;
-            let on = map[(y * 64) + x];
-            if on {
+            if is_cell_alive(map, x, y) {
                 rectangle(
                     COLOR_ON,
                     [screen_x * 10.0, screen_y * 10.0, 9.0, 9.0],
@@ -131,8 +126,8 @@ fn draw_life(map: &mut Vec<bool>, state: AppState, c: Context, g: &mut G2d) {
             }
         }
     }
-    if let AppMode::Editing = state.mode {
-        let rect_color = if map[(state.y * 64) + state.x] {
+    if state.editing {
+        let rect_color = if is_cell_alive(map, state.x, state.y) {
             [1.0, 0.8, 0.8, 1.0]
         } else {
             [1.0, 0.1, 0.1, 1.0]
@@ -147,17 +142,11 @@ fn draw_life(map: &mut Vec<bool>, state: AppState, c: Context, g: &mut G2d) {
 }
 
 #[derive(PartialEq, Clone, Copy)]
-enum AppMode {
-    Normal,
-    Editing,
-}
-
-#[derive(PartialEq, Clone, Copy)]
 struct AppState {
     x: usize,
     y: usize,
     down: bool,
-    mode: AppMode,
+    editing: bool,
 }
 
 fn edit_life(state: AppState, map: &mut Vec<bool>) {
@@ -166,56 +155,39 @@ fn edit_life(state: AppState, map: &mut Vec<bool>) {
     }
 }
 
-fn toggle_app_state(state: AppState) -> AppState {
-    let new_mode = if state.mode == AppMode::Normal {
-        AppMode::Editing
-    } else {
-        AppMode::Normal
-    };
-
-    return AppState {
-        x: state.x,
-        y: state.y,
-        down: state.down,
-        mode: new_mode,
-    };
-}
-
-fn update_state_from_input(inp: Input, state: AppState) -> Option<AppState> {
-    return match inp {
+fn get_new_state_from_input(inp: Input, state: AppState) -> Option<AppState> {
+    match inp {
         Input::Button(ButtonArgs {
             button: Button::Keyboard(Key::Space),
             state: ButtonState::Press,
             ..
-        }) => Some(toggle_app_state(state)),
+        }) => Some(AppState {
+            editing: !state.editing,
+            ..state
+        }),
         Input::Move(Motion::MouseCursor([mouse_x, mouse_y])) => Some(AppState {
             x: (mouse_x / 10.0).floor() as usize % 64,
             y: (mouse_y / 10.0).floor() as usize % 48,
-            down: state.down,
-            mode: state.mode,
+            ..state
         }),
         Input::Button(ButtonArgs {
             button: Button::Mouse(MouseButton::Left),
             state: ButtonState::Press,
             ..
         }) => Some(AppState {
-            x: state.x,
-            y: state.y,
             down: true,
-            mode: state.mode,
+            ..state
         }),
         Input::Button(ButtonArgs {
             button: Button::Mouse(MouseButton::Left),
             state: ButtonState::Release,
             ..
         }) => Some(AppState {
-            x: state.x,
-            y: state.y,
             down: false,
-            mode: state.mode,
+            ..state
         }),
         _ => None,
-    };
+    }
 }
 
 // Don't go too fast
@@ -229,12 +201,12 @@ fn main() {
         x: 0,
         y: 0,
         down: false,
-        mode: AppMode::Normal,
+        editing: false,
     };
     while let Some(e) = window.next() {
         if let Event::Input(e, _) = e {
-            if let Some(new_state) = update_state_from_input(e, state) {
-                if let AppMode::Editing = state.mode {
+            if let Some(new_state) = get_new_state_from_input(e, state) {
+                if state.editing {
                     edit_life(state, &mut map);
                 }
                 state = new_state;
@@ -242,8 +214,8 @@ fn main() {
         } else {
             window.draw_2d(&e, |c, mut g, _| {
                 clear([1.0; 4], g);
-                draw_life(&mut map, state, c, &mut g);
-                if let AppMode::Normal = state.mode {
+                draw_life(&map, state, c, &mut g);
+                if !state.editing {
                     update_life(&mut map);
                 }
             });
