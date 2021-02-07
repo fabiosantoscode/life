@@ -78,12 +78,12 @@ fn does_cell_live(map: &Vec<bool>, x: usize, y: usize) -> bool {
     }
 }
 
-fn update_life(map: &mut Vec<bool>) {
-    let mut cpy = vec![true; 64 * 48];
-    cpy.copy_from_slice(map);
+fn update_life(map: &mut Vec<bool>, scratchpad: &mut Vec<bool>) {
+    scratchpad.copy_from_slice(&map);
+
     for x in 0..64 {
         for y in 0..48 {
-            map[(y * 64) + x] = does_cell_live(&mut cpy, x, y);
+            map[(y * 64) + x] = does_cell_live(&scratchpad, x, y);
         }
     }
 }
@@ -149,43 +149,29 @@ struct AppState {
     editing: bool,
 }
 
-fn edit_life(state: AppState, map: &mut Vec<bool>) {
+fn edit_life(map: &mut Vec<bool>, state: AppState) {
     if state.down {
         map[(state.y * 64) + state.x] = !map[(state.y * 64) + state.x];
     }
 }
 
-fn get_new_state_from_input(inp: Input, state: AppState) -> Option<AppState> {
+fn get_new_state_from_input(app: AppState, inp: Input) -> Option<AppState> {
     match inp {
-        Input::Button(ButtonArgs {
-            button: Button::Keyboard(Key::Space),
-            state: ButtonState::Press,
-            ..
-        }) => Some(AppState {
-            editing: !state.editing,
-            ..state
+        Input::Move(Motion::MouseCursor([x, y])) => Some(AppState {
+            x: (x / 10.0).floor() as usize % 64,
+            y: (y / 10.0).floor() as usize % 48,
+            ..app
         }),
-        Input::Move(Motion::MouseCursor([mouse_x, mouse_y])) => Some(AppState {
-            x: (mouse_x / 10.0).floor() as usize % 64,
-            y: (mouse_y / 10.0).floor() as usize % 48,
-            ..state
-        }),
-        Input::Button(ButtonArgs {
-            button: Button::Mouse(MouseButton::Left),
-            state: ButtonState::Press,
-            ..
-        }) => Some(AppState {
-            down: true,
-            ..state
-        }),
-        Input::Button(ButtonArgs {
-            button: Button::Mouse(MouseButton::Left),
-            state: ButtonState::Release,
-            ..
-        }) => Some(AppState {
-            down: false,
-            ..state
-        }),
+        Input::Button(ButtonArgs { button, state, .. }) => {
+            match (button, state == ButtonState::Press) {
+                (Button::Keyboard(Key::Space), true) => Some(AppState {
+                    editing: !app.editing,
+                    ..app
+                }),
+                (Button::Mouse(MouseButton::Left), down) => Some(AppState { down, ..app }),
+                _ => None,
+            }
+        }
         _ => None,
     }
 }
@@ -196,7 +182,10 @@ const FPS: u64 = 8;
 fn main() {
     let mut window: PistonWindow = create_window();
     window.set_max_fps(FPS);
+    // The game level
     let mut map = create_map();
+    // Every frame needs a vector to retrieve the old positions -- clone the current one
+    let mut map_scratchpad = map.clone();
     let mut state = AppState {
         x: 0,
         y: 0,
@@ -205,9 +194,9 @@ fn main() {
     };
     while let Some(e) = window.next() {
         if let Event::Input(e, _) = e {
-            if let Some(new_state) = get_new_state_from_input(e, state) {
+            if let Some(new_state) = get_new_state_from_input(state, e) {
                 if state.editing {
-                    edit_life(state, &mut map);
+                    edit_life(&mut map, state);
                 }
                 state = new_state;
             }
@@ -216,7 +205,7 @@ fn main() {
                 clear([1.0; 4], g);
                 draw_life(&map, state, c, &mut g);
                 if !state.editing {
-                    update_life(&mut map);
+                    update_life(&mut map, &mut map_scratchpad);
                 }
             });
         }
