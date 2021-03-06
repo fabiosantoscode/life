@@ -1,73 +1,107 @@
 extern crate piston_window;
 
 use piston_window::*;
+use std::ops::Range;
 use std::option::Option;
 
-fn create_window() -> PistonWindow {
-    return WindowSettings::new("Life", [640, 480])
-        .exit_on_esc(true)
-        .build()
-        .unwrap();
+// Don't go too fast
+const FPS: u64 = 8;
+
+const WIDTH: usize = 64;
+const HEIGHT: usize = 48;
+
+const COLUMNS: Range<usize> = 0..WIDTH;
+const ROWS: Range<usize> = 0..HEIGHT;
+
+#[derive(PartialEq, Clone, Copy, Default)]
+struct AppState {
+    x: usize,
+    y: usize,
+    down: bool,
+    editing: bool,
 }
 
-fn create_map() -> Vec<bool> {
-    let mut ret = vec![false; 64 * 48];
+type GameMap = [bool; 64 * 48];
+type Coords = (usize, usize);
+
+trait GameMapTrait {
+    fn new() -> GameMap;
+    fn get(self: &Self, c: Coords) -> bool;
+    fn set(self: &mut Self, c: Coords, new_alive: bool);
+}
+
+impl GameMapTrait for GameMap {
+    fn new() -> Self {
+        [false; 64 * 48]
+    }
+    fn get(self: &Self, (x, y): Coords) -> bool {
+        self[(y * WIDTH) + x]
+    }
+    fn set(self: &mut Self, (x, y): Coords, new_alive: bool) {
+        self[(y * WIDTH) + x] = new_alive;
+    }
+}
+
+fn fill_map() -> GameMap {
+    let mut ret = GameMap::new();
 
     //  x
     //   x
     // xxx
-    ret[1 + (64 * 2)] = true;
-    ret[2 + (64 * 3)] = true;
-    ret[0 + (64 * 4)] = true;
-    ret[1 + (64 * 4)] = true;
-    ret[2 + (64 * 4)] = true;
+    ret.set((1, 2), true);
+    ret.set((2, 3), true);
+    ret.set((0, 4), true);
+    ret.set((1, 4), true);
+    ret.set((2, 4), true);
 
     //  x
     //   x
     // xxx
-    ret[1 + (64 * 8)] = true;
-    ret[2 + (64 * 9)] = true;
-    ret[0 + (64 * 10)] = true;
-    ret[1 + (64 * 10)] = true;
-    ret[2 + (64 * 10)] = true;
+    ret.set((1, 8), true);
+    ret.set((2, 9), true);
+    ret.set((0, 10), true);
+    ret.set((1, 10), true);
+    ret.set((2, 10), true);
 
     // xxx
-    ret[180] = true;
-    ret[181] = true;
-    ret[182] = true;
+    ret.set((30, 3), true);
+    ret.set((31, 3), true);
+    ret.set((32, 3), true);
 
-    return ret;
+    ret
 }
 
-fn is_cell_alive(map: &Vec<bool>, x: usize, y: usize) -> bool {
-    return map[(y * 64) + x];
+fn is_cell_alive(map: &GameMap, x: usize, y: usize) -> bool {
+    map[(y * 64) + x]
 }
 
+const NEG_X: usize = WIDTH - 1;
+const NEG_Y: usize = HEIGHT - 1;
 // added 64 and 48 respectively to avoid negative numbers when using modulo
-const POSSIBLE_NEIGHBOURS_PAIRS: [[usize; 2]; 8] = [
+const POSSIBLE_NEIGHBOURS_PAIRS: [Coords; 8] = [
     // top row
-    [64 - 1, 48 - 1],
-    [64 - 1, 48 + 0],
-    [64 - 1, 48 + 1],
+    (NEG_X, NEG_Y),
+    (NEG_X, 0),
+    (NEG_X, 1),
     // middle row (only two because 0,0 is the cell
     // itself, not a neighbour
-    [64 + 0, 48 - 1],
-    [64 + 0, 48 + 1],
+    (0, NEG_Y),
+    (0, 1),
     // bottom row
-    [64 + 1, 48 - 1],
-    [64 + 1, 48 + 0],
-    [64 + 1, 48 + 1],
+    (1, NEG_Y),
+    (1, 0),
+    (1, 1),
 ];
 
-fn does_cell_live(map: &Vec<bool>, x: usize, y: usize) -> bool {
+fn does_cell_live(map: &GameMap, (x, y): Coords) -> bool {
     let mut live_neighbour_count = 0;
-    for [x_diff, y_diff] in POSSIBLE_NEIGHBOURS_PAIRS.iter() {
+    for (x_diff, y_diff) in POSSIBLE_NEIGHBOURS_PAIRS.iter() {
         let is_alive = is_cell_alive(map, (x + x_diff) % 64, (y + y_diff) % 48);
 
         live_neighbour_count += is_alive as u8
     }
 
-    if is_cell_alive(map, x, y) {
+    if map.get((x, y)) {
         match live_neighbour_count {
             0 | 1 => false,      // Starvation
             n if n > 3 => false, // Overpopulation
@@ -78,12 +112,12 @@ fn does_cell_live(map: &Vec<bool>, x: usize, y: usize) -> bool {
     }
 }
 
-fn update_life(map: &mut Vec<bool>, scratchpad: &mut Vec<bool>) {
-    scratchpad.copy_from_slice(&map);
+fn update_life(map: &mut GameMap, scratchpad: &mut GameMap) {
+    scratchpad.copy_from_slice(map);
 
-    for x in 0..64 {
-        for y in 0..48 {
-            map[(y * 64) + x] = does_cell_live(&scratchpad, x, y);
+    for x in COLUMNS {
+        for y in ROWS {
+            map[(y * 64) + x] = does_cell_live(&scratchpad, (x, y));
         }
     }
 }
@@ -91,8 +125,15 @@ fn update_life(map: &mut Vec<bool>, scratchpad: &mut Vec<bool>) {
 const COLOR_LINE: [f32; 4] = [0.8, 0.8, 0.8, 1.0];
 const COLOR_ON: [f32; 4] = [1.0, 0.0, 0.0, 1.0];
 
-fn draw_life(map: &Vec<bool>, state: AppState, c: Context, g: &mut G2d) {
-    for x in 0..64 {
+fn create_window() -> PistonWindow {
+    WindowSettings::new("Life", [640, 480])
+        .exit_on_esc(true)
+        .build()
+        .unwrap()
+}
+
+fn draw_life(map: &GameMap, state: AppState, c: Context, g: &mut G2d) {
+    for x in COLUMNS {
         let screen_x = x as f64;
         line(
             COLOR_LINE,
@@ -102,7 +143,7 @@ fn draw_life(map: &Vec<bool>, state: AppState, c: Context, g: &mut G2d) {
             g,
         );
     }
-    for y in 0..48 {
+    for y in ROWS {
         let screen_y = y as f64;
         line(
             COLOR_LINE,
@@ -112,8 +153,8 @@ fn draw_life(map: &Vec<bool>, state: AppState, c: Context, g: &mut G2d) {
             g,
         );
     }
-    for x in 0..64 {
-        for y in 0..48 {
+    for x in COLUMNS {
+        for y in ROWS {
             let screen_x = x as f64;
             let screen_y = y as f64;
             if is_cell_alive(map, x, y) {
@@ -141,25 +182,17 @@ fn draw_life(map: &Vec<bool>, state: AppState, c: Context, g: &mut G2d) {
     }
 }
 
-#[derive(PartialEq, Clone, Copy)]
-struct AppState {
-    x: usize,
-    y: usize,
-    down: bool,
-    editing: bool,
-}
-
-fn edit_life(map: &mut Vec<bool>, state: AppState) {
+fn edit_life(map: &mut GameMap, state: AppState) {
     if state.down {
-        map[(state.y * 64) + state.x] = !map[(state.y * 64) + state.x];
+        map[(state.y * WIDTH) + state.x] = !map[(state.y * WIDTH) + state.x];
     }
 }
 
 fn get_new_state_from_input(app: AppState, inp: Input) -> Option<AppState> {
     match inp {
         Input::Move(Motion::MouseCursor([x, y])) => Some(AppState {
-            x: (x / 10.0).floor() as usize % 64,
-            y: (y / 10.0).floor() as usize % 48,
+            x: (x / 10.0).floor() as usize % WIDTH,
+            y: (y / 10.0).floor() as usize % HEIGHT,
             ..app
         }),
         Input::Button(ButtonArgs { button, state, .. }) => {
@@ -176,22 +209,17 @@ fn get_new_state_from_input(app: AppState, inp: Input) -> Option<AppState> {
     }
 }
 
-// Don't go too fast
-const FPS: u64 = 8;
-
 fn main() {
     let mut window: PistonWindow = create_window();
     window.set_max_fps(FPS);
     // The game level
-    let mut map = create_map();
+    let mut map = fill_map();
     // Every frame needs a vector to retrieve the old positions -- clone the current one
     let mut map_scratchpad = map.clone();
     let mut state = AppState {
-        x: 0,
-        y: 0,
-        down: false,
-        editing: false,
+        ..Default::default()
     };
+
     while let Some(e) = window.next() {
         if let Event::Input(e, _) = e {
             if let Some(new_state) = get_new_state_from_input(state, e) {
